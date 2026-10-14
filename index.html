@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Master Live Snake & Ladder (2-10 Players)</title>
+    <!-- Free PeerJS for 10-Player Real-time Online Multiplayer & Group Chat -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+        body {
+            margin: 0; padding: 6px;
+            background: radial-gradient(circle at top, #1a2a6c, #b21f1f, #fdbb2d);
+            background-size: 200% 200%;
+            color: #fff; text-align: center; min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center;
+            overflow-x: hidden;
+        }
+        h1 { margin: 4px 0; font-size: 18px; color: #ffd54f; text-shadow: 0 2px 6px rgba(0,0,0,0.8); }
+
+        /* ================= LOBBY SCREEN (2-10 PLAYERS) ================= */
+        #lobby-screen {
+            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(16px);
+            border: 2px solid rgba(255,213,79,0.4); border-radius: 20px;
+            padding: 16px; width: 96%; max-width: 460px; margin: auto;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+        }
+        .lobby-box { margin: 10px 0; padding: 12px; background: rgba(255,255,255,0.07); border-radius: 14px; border: 1px solid rgba(255,255,255,0.15); }
+        .input-row { display: flex; gap: 8px; margin-bottom: 8px; }
+        .lobby-input, .lobby-select {
+            width: 100%; padding: 10px; font-size: 15px; border-radius: 10px;
+            border: 2px solid #ffd54f; background: #fff; color: #000; font-weight: bold;
+            user-select: text;
+        }
+        .code-display {
+            font-size: 34px; font-weight: 900; color: #00e676; letter-spacing: 6px;
+            background: rgba(0,0,0,0.65); padding: 6px; border-radius: 10px; margin: 6px 0;
+            border: 2px dashed #00e676;
+        }
+        .btn-main {
+            background: linear-gradient(135deg, #00e676, #00c853); color: #000;
+            border: none; padding: 11px 18px; font-size: 15px; font-weight: 800;
+            border-radius: 10px; cursor: pointer; width: 100%; transition: 0.2s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+        .btn-main:active { transform: scale(0.97); }
+        .btn-join { background: linear-gradient(135deg, #ffd54f, #ff9800); }
+        .btn-start { background: linear-gradient(135deg, #ff4081, #f50057); color: #fff; margin-top: 8px; font-size: 17px; }
+
+        .joined-list {
+            display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+            margin-top: 8px; padding: 8px; background: rgba(0,0,0,0.4); border-radius: 10px;
+        }
+        .joined-pill {
+            display: flex; align-items: center; gap: 5px; padding: 4px 10px;
+            border-radius: 20px; font-size: 13px; font-weight: bold; color: #fff;
+            border: 1.5px solid #fff;
+        }
+
+        /* ================= GAME SCREEN ================= */
+        #game-screen {
+            display: none; flex-direction: column; align-items: center;
+            width: 100%; max-width: 520px; gap: 6px;
+        }
+
+        /* Multi-Player Score Roster Bar */
+        .players-roster {
+            display: flex; gap: 6px; overflow-x: auto; width: 100%;
+            background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(10px);
+            padding: 6px 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.25);
+            scrollbar-width: none;
+        }
+        .players-roster::-webkit-scrollbar { display: none; }
+        .player-chip {
+            display: flex; align-items: center; gap: 5px; padding: 5px 10px;
+            border-radius: 12px; background: rgba(255,255,255,0.1); font-weight: bold;
+            font-size: 12px; white-space: nowrap; border: 2px solid transparent; transition: 0.25s;
+        }
+        .player-chip.active-turn {
+            background: rgba(255, 193, 7, 0.3); border-color: #ffd54f;
+            box-shadow: 0 0 12px #ffd54f; transform: scale(1.05);
+        }
+        .chip-dot {
+            width: 22px; height: 22px; border-radius: 50%; display: inline-flex;
+            align-items: center; justify-content: center; font-size: 13px; border: 1.5px solid #fff;
+        }
+
+        /* ================= 100-CELL BOARD & LIVE SVG ================= */
+        .board-wrapper {
+            position: relative; width: 100%; max-width: 440px; aspect-ratio: 1 / 1;
+            border: 4px solid #ffd54f; border-radius: 14px; overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.85); background: #fff;
+        }
+        .board-grid {
+            display: grid; grid-template-columns: repeat(10, 1fr);
+            grid-template-rows: repeat(10, 1fr); width: 100%; height: 100%;
+        }
+        .cell {
+            position: relative; border: 1px solid rgba(0,0,0,0.12);
+            display: flex; align-items: flex-start; justify-content: flex-start;
+            padding: 2px 3px; font-size: 10px; font-weight: 800; color: #1e293b;
+        }
+        .cell.goal-cell { background: linear-gradient(135deg, #ffd700, #ff8c00) !important; color: #000; font-size: 12px; }
+        .cell-icon { position: absolute; bottom: 1px; right: 2px; font-size: 11px; opacity: 0.85; }
+
+        #board-svg {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 3;
+        }
+
+        /* Live Snake & Ladder Animations */
+        .snake-tongue {
+            animation: tongueFlicker 1.2s infinite ease-in-out;
+            transform-origin: center;
+        }
+        @keyframes tongueFlicker {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.15; }
+        }
+        .snake-eye {
+            animation: eyeBlink 3.5s infinite;
+        }
+        @keyframes eyeBlink {
+            0%, 92%, 100% { transform: scaleY(1); }
+            96% { transform: scaleY(0.1); }
+        }
+        .ladder-active line {
+            stroke: #00e676 !important;
+            filter: drop-shadow(0 0 3px #00e676);
+            animation: ladderGlow 0.35s infinite alternate;
+        }
+        @keyframes ladderGlow {
+            from { stroke-width: 1.2; }
+            to { stroke-width: 2.0; }
+        }
+
+        /* Player Tokens on Board */
+        #tokens-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 6;
+        }
+        .board-token {
+            position: absolute; width: 7.2%; height: 7.2%; border-radius: 50%;
+            border: 2px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+            transition: left 0.22s ease-out, top 0.22s ease-out, transform 0.22s ease;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; transform: translate(-50%, -50%);
+        }
+        .token-climbing {
+            animation: climbWiggle 0.25s infinite alternate !important;
+            z-index: 15 !important;
+        }
+        @keyframes climbWiggle {
+            from { transform: translate(-50%, -50%) rotate(-18deg) scale(1.25); }
+            to   { transform: translate(-50%, -50%) rotate(18deg) scale(1.25); }
+        }
+        .token-swallowed {
+            transform: translate(-50%, -50%) scale(0.55) !important;
+            opacity: 0.85;
+            z-index: 15 !important;
+            transition: none !important;
+        }
+
+        /* ================= CONTROLS & DICE AREA ================= */
+        .control-panel {
+            display: flex; align-items: center; justify-content: space-between;
+            width: 100%; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(10px);
+            padding: 6px 12px; border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.25); gap: 10px;
+        }
+        .status-box {
+            flex-grow: 1; text-align: left; font-size: 13px; font-weight: bold;
+            color: #fff; line-height: 1.3;
+        }
+        .dice-btn {
+            width: 60px; height: 60px; border-radius: 14px;
+            background: linear-gradient(145deg, #ffffff, #e6e6e6);
+            border: 3px solid #ff9800; box-shadow: 0 5px 14px rgba(0,0,0,0.6);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; transition: 0.2s; flex-shrink: 0; color: #d32f2f;
+        }
+        .dice-btn:active { transform: scale(0.95); }
+        .dice-disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(80%); }
+        .dice-face { font-size: 32px; line-height: 1; }
+        .dice-label { font-size: 9px; font-weight: 900; color: #000; margin-top: 2px; }
+
+        .rolling { animation: shakeDice 0.35s infinite; }
+        @keyframes shakeDice {
+            0% { transform: rotate(0deg) scale(1.1); }
+            25% { transform: rotate(-22deg) scale(1.15); }
+            50% { transform: rotate(22deg) scale(1.1); }
+            75% { transform: rotate(-15deg) scale(1.15); }
+            100% { transform: rotate(0deg) scale(1.1); }
+        }
+
+        /* ================= MEGA EMOJI REACTION BAR ================= */
+        .emoji-bar {
+            display: flex; gap: 6px; overflow-x: auto; align-items: center;
+            width: 100%; background: rgba(15, 23, 42, 0.85); padding: 5px 10px;
+            border-radius: 25px; border: 1px solid rgba(255,255,255,0.25);
+            scrollbar-width: none;
+        }
+        .emoji-bar::-webkit-scrollbar { display: none; }
+        .emoji-btn {
+            background: rgba(255,255,255,0.08); border: none; border-radius: 50%;
+            font-size: 20px; cursor: pointer; transition: transform 0.2s;
+            padding: 4px 7px; flex-shrink: 0;
+        }
+        .emoji-btn:hover { transform: scale(1.25); background: rgba(255,255,255,0.2); }
+        .emoji-btn:active { transform: scale(0.9); }
+
+        /* ================= LIVE GROUP CHAT SECTION ================= */
+        .chat-section {
+            width: 100%; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 14px;
+            padding: 8px; display: flex; flex-direction: column; gap: 6px;
+        }
+        .chat-messages {
+            height: 90px; overflow-y: auto; display: flex; flex-direction: column;
+            gap: 5px; padding: 5px 8px; background: rgba(0,0,0,0.35);
+            border-radius: 8px; text-align: left;
+        }
+        .msg-bubble {
+            max-width: 85%; padding: 5px 10px; border-radius: 12px;
+            font-size: 12.5px; line-height: 1.3; word-wrap: break-word;
+            animation: popIn 0.2s ease-out;
+        }
+        @keyframes popIn {
+            from { transform: scale(0.85); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        .msg-me {
+            align-self: flex-end; background: linear-gradient(135deg, #00e676, #00b0ff);
+            color: #000; font-weight: 700; border-bottom-right-radius: 2px;
+        }
+        .msg-other {
+            align-self: flex-start; background: rgba(255, 255, 255, 0.18);
+            color: #fff; font-weight: 600; border-bottom-left-radius: 2px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .msg-sender { font-size: 10px; opacity: 0.85; display: block; margin-bottom: 1px; font-weight: 800; }
+
+        .quick-chat-bar {
+            display: flex; gap: 5px; overflow-x: auto; padding-bottom: 2px;
+            scrollbar-width: none;
+        }
+        .quick-chat-bar::-webkit-scrollbar { display: none; }
+        .quick-chip {
+            background: rgba(255, 213, 79, 0.18); border: 1px solid #ffd54f;
+            color: #ffd54f; padding: 4px 9px; border-radius: 15px; font-size: 11px;
+            font-weight: bold; white-space: nowrap; cursor: pointer; transition: 0.2s;
+        }
+        .quick-chip:active { background: #ffd54f; color: #000; transform: scale(0.95); }
+
+        .chat-input-row { display: flex; gap: 6px; width: 100%; }
+        .chat-input {
+            flex-grow: 1; padding: 8px 12px; border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.4); background: #fff;
+            color: #000; font-size: 13px; outline: none; user-select: text; font-weight: 600;
+        }
+        .chat-send-btn {
+            background: linear-gradient(135deg, #ffd54f, #ff9800); color: #000;
+            border: none; padding: 0 16px; border-radius: 20px; font-weight: 800;
+            font-size: 13px; cursor: pointer;
+        }
+
+        /* Floating Emoji Animation */
+        .floating-emoji {
+            position: fixed; bottom: 80px; font-size: 52px; pointer-events: none;
+            z-index: 9999; animation: floatUp 2.6s ease-out forwards;
+            filter: drop-shadow(0 5px 12px rgba(0,0,0,0.6));
+        }
+        .floating-emoji span {
+            display: block; font-size: 12px; background: rgba(0,0,0,0.8);
+            color: #ffd54f; padding: 2px 8px; border-radius: 10px; margin-top: -5px; font-weight: bold;
+        }
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(0.5); opacity: 0; }
+            15% { transform: translateY(-40px) scale(1.2); opacity: 1; }
+            80% { transform: translateY(-280px) scale(1); opacity: 1; }
+            100% { transform: translateY(-360px) scale(0.8); opacity: 0; }
+        }
+
+        #restart-btn {
+            display: none; background: #00e676; color: #000; border: none;
+            padding: 6px 14px; border-radius: 8px; font-weight: 800; cursor: pointer; margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🐍 মাস্টার লাইভ সাপ-লুডু (২ থেকে ১০ জন প্লেয়ার) 🪜</h1>
+
+    <!-- ================= LOBBY SCREEN ================= -->
+    <div id="lobby-screen">
+        <div class="lobby-box">
+            <div style="font-weight:bold; margin-bottom:6px; color:#ffd54f; font-size:14px;">👤 আপনার নাম ও অবতার সিলেক্ট করুন:</div>
+            <div class="input-row">
+                <input type="text" id="player-name-input" class="lobby-input" placeholder="আপনার নাম (যেমন: Baba / Taniska)" maxlength="14" />
+                <select id="player-avatar-select" class="lobby-select" style="width:95px;">
+                    <option value="👨">👨 বাবা</option>
+                    <option value="👧">👧 মেয়ে</option>
+                    <option value="👩">👩 মা</option>
+                    <option value="👦">👦 ছেলে</option>
+                    <option value="🦁">🦁 সিংহ</option>
+                    <option value="🦄">🦄 ইউনিকর্ন</option>
+                    <option value="🐼">🐼 পান্ডা</option>
+                    <option value="🐸">🐸 ব্যাঙ</option>
+                    <option value="🐯">🐯 বাঘ</option>
+                    <option value="👑">👑 কিং</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Host Setup Box -->
+        <div id="host-setup-box" class="lobby-box">
+            <div style="font-weight:bold; margin-bottom:6px; font-size:14px; color:#00e676;">১. নতুন রুম তৈরি করুন (Host - ২ থেকে ১০ জন):</div>
+            <div class="input-row">
+                <select id="max-players-select" class="lobby-select">
+                    <option value="2">২ জন প্লেয়ার (2 Players)</option>
+                    <option value="3">৩ জন প্লেয়ার (3 Players)</option>
+                    <option value="4" selected>৪ জন প্লেয়ার (4 Players)</option>
+                    <option value="5">৫ জন প্লেয়ার (5 Players)</option>
+                    <option value="6">৬ জন প্লেয়ার (6 Players)</option>
+                    <option value="8">৮ জন প্লেয়ার (8 Players)</option>
+                    <option value="10">১০ জন প্লেয়ার (10 Players)</option>
+                </select>
+            </div>
+            <button id="create-btn" class="btn-main" onclick="createRoom()">গেম কোড তৈরি করুন (Create Room)</button>
+
+            <!-- Waiting Room Display -->
+            <div id="host-waiting-area" style="display:none; margin-top:10px;">
+                <div style="font-size:12px;">সবাইকে এই ৪ সংখ্যার রুম কোডটি দিন:</div>
+                <div id="room-code-display" class="code-display">....</div>
+                <div style="font-size:13px; color:#ffd54f;">জয়েন করা প্লেয়ার (<span id="joined-count">1</span>/<span id="max-count">4</span>):</div>
+                <div id="host-joined-list" class="joined-list"></div>
+                <button id="start-game-btn" class="btn-main btn-start" onclick="hostStartGame()">🚀 খেলা শুরু করুন (Start Game)</button>
+            </div>
+        </div>
+
+        <div id="or-divider" style="font-weight:bold; margin: 4px 0; font-size:12px;">--- অথবা (OR) ---</div>
+
+        <!-- Guest Join Box -->
+        <div id="guest-setup-box" class="lobby-box">
+            <div style="font-weight:bold; margin-bottom:6px; font-size:14px; color:#ffd54f;">২. কোড দিয়ে গেমে জয়েন করুন (Join Game):</div>
+            <div class="input-row">
+                <input type="number" id="join-code-input" class="lobby-input" placeholder="৪ সংখ্যার কোড (1234)" style="text-align:center; font-size:20px; letter-spacing:4px;" />
+            </div>
+            <button id="join-btn" class="btn-main btn-join" onclick="joinRoom()">জয়েন করুন (Join Now)</button>
+            <div id="join-status" style="font-size:13px; color:#00e676; margin-top:6px;"></div>
+            <div id="guest-joined-list" class="joined-list" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- ================= GAME SCREEN ================= -->
+    <div id="game-screen">
+        <!-- Top Bar: Room Info + Scrollable Player Roster -->
+        <div style="display:flex; justify-content:space-between; width:100%; align-items:center; padding:0 4px;">
+            <span style="font-size:12px; background:rgba(0,230,118,0.2); padding:3px 10px; border-radius:12px; border:1px solid #00e676;">
+                🟢 রুম কোড: <strong id="active-room-code">----</strong>
+            </span>
+            <span style="font-size:12px; color:#ffd54f; font-weight:bold;" id="my-identity-badge"></span>
+        </div>
+
+        <div id="players-roster" class="players-roster"></div>
+
+        <!-- 100-Cell Snake & Ladder Board -->
+        <div class="board-wrapper">
+            <div id="board-grid" class="board-grid"></div>
+            <svg id="board-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+            <div id="tokens-layer"></div>
+        </div>
+
+        <!-- Dice & Status Control Panel -->
+        <div class="control-panel">
+            <div class="status-box">
+                <div id="status-msg">খেলা শুরু হয়েছে! ছক্কায় চাপ দিন!</div>
+                <button id="restart-btn" onclick="handleRestartClick()">আবার নতুন করে খেলুন 🔄</button>
+            </div>
+            <div id="dice-btn" class="dice-btn" onclick="handleRollClick()">
+                <div id="dice-face" class="dice-face">🎲</div>
+                <div class="dice-label">চাল দিন</div>
+            </div>
+        </div>
+
+        <!-- 16 Live Floating Emojis Bar -->
+        <div class="emoji-bar">
+            <button class="emoji-btn" onclick="sendEmoji('❤️', 'Love you!')">❤️</button>
+            <button class="emoji-btn" onclick="sendEmoji('👏', 'Clap clap!')">👏</button>
+            <button class="emoji-btn" onclick="sendEmoji('🎉', 'Party time!')">🎉</button>
+            <button class="emoji-btn" onclick="sendEmoji('😂', 'Haha!')">😂</button>
+            <button class="emoji-btn" onclick="sendEmoji('😱', 'Oh no!')">😱</button>
+            <button class="emoji-btn" onclick="sendEmoji('😘', 'Big kiss!')">😘</button>
+            <button class="emoji-btn" onclick="sendEmoji('🐍', 'Hiss! Snake!')">🐍</button>
+            <button class="emoji-btn" onclick="sendEmoji('🪜', 'Up the ladder!')">🪜</button>
+            <button class="emoji-btn" onclick="sendEmoji('🎲', 'Roll the dice!')">🎲</button>
+            <button class="emoji-btn" onclick="sendEmoji('🏆', 'Champion!')">🏆</button>
+            <button class="emoji-btn" onclick="sendEmoji('😭', 'Crying!')">😭</button>
+            <button class="emoji-btn" onclick="sendEmoji('🔥', 'On fire!')">🔥</button>
+            <button class="emoji-btn" onclick="sendEmoji('🥳', 'Woohoo!')">🥳</button>
+            <button class="emoji-btn" onclick="sendEmoji('😎', 'Cool!')">😎</button>
+            <button class="emoji-btn" onclick="sendEmoji('👍', 'Good job!')">👍</button>
+            <button class="emoji-btn" onclick="sendEmoji('🙏', 'Please!')">🙏</button>
+        </div>
+
+        <!-- ================= LIVE GROUP CHAT SECTION ================= -->
+        <div class="chat-section">
+            <div id="chat-messages" class="chat-messages">
+                <div style="font-size:11px; color:#cbd5e1; text-align:center;">💬 সবাই এখানে সরাসরি চ্যাট ও ভয়েস মেসেজ পাঠাতে পারবেন!</div>
+            </div>
+
+            <!-- One-Tap Quick Chat Buttons -->
+            <div class="quick-chat-bar">
+                <button class="quick-chip" onclick="sendQuickChat('Love you Baba ❤️', 'Love you Baba')">❤️ Love you Baba</button>
+                <button class="quick-chip" onclick="sendQuickChat('Love you Mamonii 😘', 'Love you Mamoni')">😘 Love you Mamoni</button>
+                <button class="quick-chip" onclick="sendQuickChat('তাড়াতাড়ি ছক্কা মারো! 🎲', 'Roll the dice quickly')">🎲 ছক্কা মারো!</button>
+                <button class="quick-chip" onclick="sendQuickChat('ইয়ে! আমি মই দিয়ে উঠছি! 🪜', 'Yay! Climbing up the ladder')">🪜 মই পেয়েছি!</button>
+                <button class="quick-chip" onclick="sendQuickChat('ও মা গো! সাপে গিলে খেয়েছে 😭', 'Oh no! The snake ate me')">🐍 সাপে খেয়েছে!</button>
+                <button class="quick-chip" onclick="sendQuickChat('এবার আমিই জিতবো! 🏆', 'I will win this game')">🏆 আমি জিতবো!</button>
+            </div>
+
+            <div class="chat-input-row">
+                <input type="text" id="chat-input" class="chat-input" placeholder="মেসেজ লিখুন (Type message)..." onkeypress="if(event.key==='Enter') sendTextChat()" />
+                <button class="chat-send-btn" onclick="sendTextChat()">পাঠান ➤</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const PREFIX = "master-snakeladder-v2-";
+        const diceFaces = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+        const playerColors = [
+            '#2979ff', '#ff1744', '#00e676', '#ff9100', '#d500f9',
+            '#00e5ff', '#ffea00', '#f50057', '#651fff', '#1de9b6'
+        ];
+
+        // Classic Ladders (মই) & Snakes (সাপ)
+        const ladders = { 4: 25, 13: 46, 33: 49, 42: 63, 50: 69, 62: 81, 74: 92 };
+        const snakes  = { 27: 5, 40: 3, 43: 18, 54: 31, 66: 45, 76: 58, 89: 53, 99: 41 };
+
+        let peer = null;
+        let isHost = false;
+        let hostConn = null;
+        let guestConns = []; // Used by Host to broadcast to up to 10 players
+        let myPlayerId = "";
+        let roomCode = "";
+        let maxPlayers = 4;
+        let isAnimating = false;
+
+        let state = {
+            started: false,
+            players: [], // { id, name, avatar, color, pos }
+            currentTurnIdx: 0,
+            diceVal: 6,
+            statusMsg: "খেলা শুরু হয়েছে!",
+            gameOver: false
+        };
+
+        // ================= VOICE & SOUND EFFECTS =================
+        function speak(text) {
+            if (!text || !('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel();
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.rate = 0.95;
+            window.speechSynthesis.speak(msg);
+        }
+
+        function playTone(freq, type, duration) {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + duration);
+                osc.stop(ctx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        function getMyProfile() {
+            const rawName = document.getElementById('player-name-input').value.trim();
+            const avatar = document.getElementById('player-avatar-select').value;
+            return {
+                name: rawName || (isHost ? "Baba" : "Player"),
+                avatar: avatar
+            };
+        }
+
+        // ================= 1. HOST MULTIPLAYER SETUP (UP TO 10 PLAYERS) =================
+        function createRoom() {
+            isHost = true;
+            maxPlayers = parseInt(document.getElementById('max-players-select').value);
+            roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+
+            document.getElementById('create-btn').style.display = 'none';
+            document.getElementById('guest-setup-box').style.display = 'none';
+            document.getElementById('or-divider').style.display = 'none';
+            document.getElementById('host-waiting-area').style.display = 'block';
+            document.getElementById('room-code-display').innerText = roomCode;
+            document.getElementById('max-count').innerText = maxPlayers;
+
+            const profile = getMyProfile();
+            myPlayerId = "p_host";
+            state.players = [{
+                id: myPlayerId,
+                name: profile.name,
+                avatar: profile.avatar,
+                color: playerColors[0],
+                pos: 1
+            }];
+            renderLobbyPlayers();
+
+            peer = new Peer(PREFIX + roomCode);
+            peer.on('connection', (conn) => {
+                conn.on('open', () => {
+                    guestConns.push(conn);
+                });
+                conn.on('data', (data) => handleHostIncomingData(conn, data));
+                conn.on('close', () => {
+                    guestConns = guestConns.filter(c => c !== conn);
+                });
+            });
+            peer.on('error', () => alert("নেটওয়ার্ক এরর! পেজটি রিফ্রেশ করে আবার চেষ্টা করুন।"));
+        }
+
+        function handleHostIncomingData(conn, data) {
+            if (data.type === 'JOIN_REQUEST') {
+                if (state.started || state.players.length >= maxPlayers) {
+                    conn.send({ type: 'JOIN_REJECTED', reason: 'রুম ফুল বা খেলা শুরু হয়ে গেছে!' });
+                    return;
+                }
+                const newId = "p_" + Date.now() + "_" + Math.floor(Math.random() * 100);
+                const newPlayer = {
+                    id: newId,
+                    name: data.name || ("Player " + (state.players.length + 1)),
+                    avatar: data.avatar || "👧",
+                    color: playerColors[state.players.length % playerColors.length],
+                    pos: 1
+                };
+                state.players.push(newPlayer);
+                conn.send({ type: 'JOIN_ACCEPTED', playerId: newId, state: state, roomCode: roomCode });
+                broadcastFromHost({ type: 'LOBBY_UPDATE', state: state });
+                renderLobbyPlayers();
+                speak(`${newPlayer.name} joined the room!`);
+            } else if (data.type === 'REQ_ROLL') {
+                const currentP = state.players[state.currentTurnIdx];
+                if (currentP && currentP.id === data.playerId && !isAnimating) {
+                    triggerRollOnHost();
+                }
+            } else if (data.type === 'EMOJI_EVENT' || data.type === 'CHAT_EVENT') {
+                broadcastFromHost(data);
+                handleCommonEvents(data);
+            } else if (data.type === 'REQ_RESTART') {
+                hostRestartGame();
+            }
+        }
+
+        function broadcastFromHost(payload) {
+            guestConns.forEach(c => {
+                if (c && c.open) c.send(payload);
+            });
+        }
+
+        function renderLobbyPlayers() {
+            document.getElementById('joined-count').innerText = state.players.length;
+            const listHtml = state.players.map(p =>
+                `<div class="joined-pill" style="background:${p.color}">${p.avatar} ${p.name}</div>`
+            ).join('');
+            document.getElementById('host-joined-list').innerHTML = listHtml;
+            const guestList = document.getElementById('guest-joined-list');
+            guestList.style.display = 'flex';
+            guestList.innerHTML = listHtml;
+        }
+
+        function hostStartGame() {
+            if (state.players.length < 2) {
+                if (!confirm("এখনো অন্য কেউ জয়েন করেনি! আপনি কি একাই টেস্ট করতে চান?")) return;
+            }
+            state.started = true;
+            state.currentTurnIdx = 0;
+            state.gameOver = false;
+            state.statusMsg = `👉 এখন ${state.players[0].avatar} ${state.players[0].name}-এর দান! ছক্কায় চাপ দিন!`;
+
+            broadcastFromHost({ type: 'START_GAME', state: state });
+            launchGameScreen();
+        }
+
+        // ================= 2. GUEST JOIN SETUP =================
+        function joinRoom() {
+            const code = document.getElementById('join-code-input').value.trim();
+            if (code.length !== 4) {
+                alert("দয়া করে ৪ সংখ্যার সঠিক রুম কোডটি লিখুন!");
+                return;
+            }
+            roomCode = code;
+            document.getElementById('join-btn').disabled = true;
+            document.getElementById('join-status').innerText = "🔄 কানেক্ট হচ্ছে... একটু অপেক্ষা করুন...";
+
+            peer = new Peer();
+            peer.on('open', () => {
+                hostConn = peer.connect(PREFIX + roomCode);
+                hostConn.on('open', () => {
+                    const profile = getMyProfile();
+                    hostConn.send({ type: 'JOIN_REQUEST', name: profile.name, avatar: profile.avatar });
+                });
+                hostConn.on('data', (data) => handleGuestIncomingData(data));
+                hostConn.on('close', () => {
+                    alert("হোস্ট ডিসকানেক্ট হয়ে গেছে!");
+                    location.reload();
+                });
+            });
+            peer.on('error', () => {
+                document.getElementById('join-status').innerText = "❌ রুম কোড পাওয়া যায়নি! আবার চেষ্টা করুন।";
+                document.getElementById('join-btn').disabled = false;
+            });
+        }
+
+        function handleGuestIncomingData(data) {
+            if (data.type === 'JOIN_REJECTED') {
+                alert(data.reason);
+                location.reload();
+            } else if (data.type === 'JOIN_ACCEPTED') {
+                myPlayerId = data.playerId;
+                state = data.state;
+                document.getElementById('host-setup-box').style.display = 'none';
+                document.getElementById('or-divider').style.display = 'none';
+                document.getElementById('join-status').innerText = "✅ কানেক্ট হয়েছে! হোস্ট খেলা শুরু করলে বোর্ড আসবে...";
+                renderLobbyPlayers();
+            } else if (data.type === 'LOBBY_UPDATE') {
+                state = data.state;
+                renderLobbyPlayers();
+            } else if (data.type === 'START_GAME') {
+                state = data.state;
+                launchGameScreen();
+            } else if (data.type === 'ROLL_SEQUENCE') {
+                animateMoveSequence(data.turnIdx, data.dice, data.fromPos);
+            } else if (data.type === 'RESTART_GAME') {
+                state = data.state;
+                resetBoardUI();
+            } else if (data.type === 'EMOJI_EVENT' || data.type === 'CHAT_EVENT') {
+                handleCommonEvents(data);
+            }
+        }
+
+        function handleCommonEvents(data) {
+            if (data.type === 'EMOJI_EVENT') {
+                showFloatingEmoji(data.emoji, data.senderName, data.voiceText);
+            } else if (data.type === 'CHAT_EVENT') {
+                const isMe = (data.senderId === myPlayerId);
+                appendChatBubble(data.senderName, data.text, isMe);
+                if (!isMe) {
+                    playTone(620, 'sine', 0.15);
+                    speak(data.speakText || data.text);
+                }
+            }
+        }
+
+        // ================= 3. LAUNCH BOARD & DRAW LIVE SNAKES/LADDERS =================
+        function launchGameScreen() {
+            document.getElementById('lobby-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'flex';
+            document.getElementById('active-room-code').innerText = roomCode;
+
+            const me = state.players.find(p => p.id === myPlayerId);
+            if (me) {
+                document.getElementById('my-identity-badge').innerText = `আপনি: ${me.avatar} ${me.name}`;
+            }
+
+            buildBoard();
+            createPlayerTokenElements();
+            renderRosterAndControls();
+            updateAllTokenPositions();
+            speak("Game started! Let's play!");
+        }
+
+        function buildBoard() {
+            const grid = document.getElementById('board-grid');
+            grid.innerHTML = '';
+            const palette = ['#fff9c4', '#bbdefb', '#c8e6c9', '#ffcdd2', '#e1bee7'];
+
+            for (let r = 0; r < 10; r++) {
+                let rowFromBottom = 9 - r;
+                for (let c = 0; c < 10; c++) {
+                    let num = (rowFromBottom % 2 === 0)
+                        ? (rowFromBottom * 10 + c + 1)
+                        : (rowFromBottom * 10 + (10 - c));
+
+                    const cell = document.createElement('div');
+                    cell.className = 'cell' + (num === 100 ? ' goal-cell' : '');
+                    cell.style.background = palette[(r + c) % palette.length];
+                    
+                    let icon = '';
+                    if (num === 100) icon = '👑';
+                    else if (ladders[num]) icon = '🪜';
+                    else if (snakes[num]) icon = '🐍';
+
+                    cell.innerHTML = `<span>${num}</span><span class="cell-icon">${icon}</span>`;
+                    grid.appendChild(cell);
+                }
+            }
+            drawLiveSnakesAndLaddersSVG();
+        }
+
+        function getCellCenterPercent(num) {
+            let n = Math.max(1, Math.min(100, num));
+            let rowFromBottom = Math.floor((n - 1) / 10);
+            let rem = (n - 1) % 10;
+            let col = (rowFromBottom % 2 === 0) ? rem : (9 - rem);
+            let rowFromTop = 9 - rowFromBottom;
+            return { x: col * 10 + 5, y: rowFromTop * 10 + 5 };
+        }
+
+        function drawLiveSnakesAndLaddersSVG() {
+            const svg = document.getElementById('board-svg');
+            let html = '';
+
+            // 1. Draw Ladders with IDs so they can glow when climbing
+            for (let start in ladders) {
+                let end = ladders[start];
+                let p1 = getCellCenterPercent(parseInt(start));
+                let p2 = getCellCenterPercent(end);
+
+                let dx = p2.x - p1.x;
+                let dy = p2.y - p1.y;
+                let len = Math.hypot(dx, dy);
+                let nx = (-dy / len) * 1.8;
+                let ny = (dx / len) * 1.8;
+
+                html += `<g id="ladder-group-${start}">`;
+                html += `<line x1="${p1.x - nx}" y1="${p1.y - ny}" x2="${p2.x - nx}" y2="${p2.y - ny}" stroke="#8d4e24" stroke-width="1.2" stroke-linecap="round"/>`;
+                html += `<line x1="${p1.x + nx}" y1="${p1.y + ny}" x2="${p2.x + nx}" y2="${p2.y + ny}" stroke="#8d4e24" stroke-width="1.2" stroke-linecap="round"/>`;
+
+                let steps = Math.floor(len / 4.2);
+                for (let i = 1; i < steps; i++) {
+                    let t = i / steps;
+                    let rx = p1.x + dx * t;
+                    let ry = p1.y + dy * t;
+                    html += `<line x1="${rx - nx}" y1="${ry - ny}" x2="${rx + nx}" y2="${ry + ny}" stroke="#b5651d" stroke-width="0.85"/>`;
+                }
+                html += `</g>`;
+            }
+
+            // 2. Draw LIVE Snakes (Path + Belly Bulge Circle + Openable Mouth + Flickering Tongue)
+            const snakeColors = ['#d32f2f', '#7b1fa2', '#2e7d32', '#e65100', '#c2185b', '#00796b', '#5d4037', '#1565c0'];
+            let sIdx = 0;
+            for (let head in snakes) {
+                let tail = snakes[head];
+                let p1 = getCellCenterPercent(parseInt(head));
+                let p2 = getCellCenterPercent(tail);
+                let color = snakeColors[sIdx % snakeColors.length];
+                sIdx++;
+
+                let midX = (p1.x + p2.x) / 2;
+                let midY = (p1.y + p2.y) / 2;
+                let offset = (sIdx % 2 === 0 ? 13 : -13);
+                let pathD = `M ${p1.x} ${p1.y} Q ${midX + offset} ${midY - 6}, ${midX} ${midY} T ${p2.x} ${p2.y}`;
+
+                html += `<g id="snake-group-${head}">`;
+                // Snake Body Path (with ID for exact stomach-digestion tracking!)
+                html += `<path id="snake-path-${head}" d="${pathD}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" opacity="0.92"/>`;
+                html += `<path d="${pathD}" fill="none" stroke="#ffd54f" stroke-width="0.9" stroke-dasharray="1.5,1.5" stroke-linecap="round"/>`;
+
+                // Swallowed Belly Bulge Circle (Hidden until snake eats a token!)
+                html += `<circle id="snake-bulge-${head}" cx="${p1.x}" cy="${p1.y}" r="3.6" fill="${color}" stroke="#ffd54f" stroke-width="0.9" style="display:none; filter:drop-shadow(0 0 4px #000);" />`;
+
+                // Live Flickering Red Tongue
+                html += `<path class="snake-tongue" d="M ${p1.x} ${p1.y - 2} L ${p1.x - 1.2} ${p1.y - 4.5} M ${p1.x} ${p1.y - 2} L ${p1.x + 1.2} ${p1.y - 4.5}" stroke="#ff1744" stroke-width="0.55" stroke-linecap="round"/>`;
+
+                // Snake Head & Blinking Eyes
+                html += `<circle cx="${p1.x}" cy="${p1.y}" r="2.5" fill="${color}" />`;
+                html += `<circle class="snake-eye" cx="${p1.x - 0.8}" cy="${p1.y - 0.6}" r="0.6" fill="#fff" />`;
+                html += `<circle class="snake-eye" cx="${p1.x + 0.8}" cy="${p1.y - 0.6}" r="0.6" fill="#fff" />`;
+                html += `<circle cx="${p1.x - 0.8}" cy="${p1.y - 0.6}" r="0.25" fill="#000" />`;
+                html += `<circle cx="${p1.x + 0.8}" cy="${p1.y - 0.6}" r="0.25" fill="#000" />`;
+
+                // Wide Open Mouth & Fangs (Shown when biting a player!)
+                html += `<g id="snake-mouth-${head}" style="display:none;">
+                            <ellipse cx="${p1.x}" cy="${p1.y + 0.5}" rx="2.6" ry="2.2" fill="#880e4f" stroke="#ffeb3b" stroke-width="0.4" />
+                            <polygon points="${p1.x-1.3},${p1.y-1.2} ${p1.x-0.8},${p1.y+0.5} ${p1.x-0.3},${p1.y-1.2}" fill="#fff"/>
+                            <polygon points="${p1.x+0.3},${p1.y-1.2} ${p1.x+0.8},${p1.y+0.5} ${p1.x+1.3},${p1.y-1.2}" fill="#fff"/>
+                         </g>`;
+                html += `</g>`;
+            }
+
+            svg.innerHTML = html;
+        }
+
+        function createPlayerTokenElements() {
+            const layer = document.getElementById('tokens-layer');
+            layer.innerHTML = '';
+            state.players.forEach((p, idx) => {
+                const tok = document.createElement('div');
+                tok.id = `token-${idx}`;
+                tok.className = 'board-token';
+                tok.style.background = p.color;
+                tok.innerText = p.avatar;
+                tok.title = p.name;
+                layer.appendChild(tok);
+            });
+        }
+
+        function updateAllTokenPositions() {
+            // Group players by cell position so up to 10 tokens don't overlap completely
+            const cellGroups = {};
+            state.players.forEach((p, idx) => {
+                if (!cellGroups[p.pos]) cellGroups[p.pos] = [];
+                cellGroups[p.pos].push(idx);
+            });
+
+            state.players.forEach((p, idx) => {
+                const tok = document.getElementById(`token-${idx}`);
+                if (!tok) return;
+                const center = getCellCenterPercent(p.pos);
+                const group = cellGroups[p.pos];
+                const posInGroup = group.indexOf(idx);
+
+                let offsetX = 0, offsetY = 0;
+                if (group.length > 1) {
+                    const angle = (posInGroup / group.length) * Math.PI * 2;
+                    offsetX = Math.cos(angle) * 2.1;
+                    offsetY = Math.sin(angle) * 2.1;
+                }
+
+                tok.style.left = (center.x + offsetX) + '%';
+                tok.style.top = (center.y + offsetY) + '%';
+            });
+
+            renderRosterAndControls();
+        }
+
+        function renderRosterAndControls() {
+            const roster = document.getElementById('players-roster');
+            roster.innerHTML = state.players.map((p, idx) => {
+                const isTurn = (idx === state.currentTurnIdx && !state.gameOver);
+                return `<div class="player-chip ${isTurn ? 'active-turn' : ''}">
+                            <span class="chip-dot" style="background:${p.color}">${p.avatar}</span>
+                            <span>${p.name}: <strong>${p.pos}</strong></span>
+                        </div>`;
+            }).join('');
+
+            document.getElementById('status-msg').innerText = state.statusMsg;
+
+            const currentP = state.players[state.currentTurnIdx];
+            const isMyTurn = currentP && (currentP.id === myPlayerId);
+            const diceBtn = document.getElementById('dice-btn');
+
+            if (!isAnimating && !state.gameOver && isMyTurn) {
+                diceBtn.classList.remove('dice-disabled');
+            } else {
+                diceBtn.classList.add('dice-disabled');
+            }
+        }
+
+        // ================= 4. GAMEPLAY: ROLL, LIVE LADDER CLIMB & SNAKE BELLY DIGESTION =================
+        function handleRollClick() {
+            if (isAnimating || state.gameOver) return;
+            const currentP = state.players[state.currentTurnIdx];
+            if (!currentP || currentP.id !== myPlayerId) {
+                speak("Please wait for your turn!");
+                return;
+            }
+
+            if (isHost) {
+                triggerRollOnHost();
+            } else if (hostConn && hostConn.open) {
+                hostConn.send({ type: 'REQ_ROLL', playerId: myPlayerId });
+            }
+        }
+
+        function triggerRollOnHost() {
+            const diceVal = Math.floor(Math.random() * 6) + 1;
+            const turnIdx = state.currentTurnIdx;
+            const fromPos = state.players[turnIdx].pos;
+
+            broadcastFromHost({
+                type: 'ROLL_SEQUENCE',
+                turnIdx: turnIdx,
+                dice: diceVal,
+                fromPos: fromPos
+            });
+            animateMoveSequence(turnIdx, diceVal, fromPos);
+        }
+
+        function animateMoveSequence(turnIdx, dice, fromPos) {
+            isAnimating = true;
+            renderRosterAndControls();
+
+            const player = state.players[turnIdx];
+            const diceEl = document.getElementById('dice-btn');
+            const faceEl = document.getElementById('dice-face');
+            diceEl.classList.add('rolling');
+            playTone(420, 'triangle', 0.25);
+
+            setTimeout(() => {
+                diceEl.classList.remove('rolling');
+                faceEl.innerText = diceFaces[dice];
+                state.diceVal = dice;
+
+                speak(`${dice}`);
+                state.statusMsg = `🎲 ${player.avatar} ${player.name} ছক্কায় পেয়েছেন: ${dice}!`;
+                document.getElementById('status-msg').innerText = state.statusMsg;
+
+                let targetPos = fromPos + dice;
+                if (targetPos > 100) {
+                    state.statusMsg = `${player.name} ১০০ পার হয়ে যাচ্ছে! চালটি বাতিল।`;
+                    document.getElementById('status-msg').innerText = state.statusMsg;
+                    setTimeout(() => finishTurn(turnIdx, dice), 1100);
+                    return;
+                }
+
+                // Step-by-step cell hopping
+                let currentStep = fromPos;
+                const stepInterval = setInterval(() => {
+                    currentStep++;
+                    player.pos = currentStep;
+                    updateAllTokenPositions();
+                    playTone(300 + currentStep * 4, 'sine', 0.09);
+
+                    if (currentStep >= targetPos) {
+                        clearInterval(stepInterval);
+                        setTimeout(() => checkSnakeOrLadderLive(turnIdx, targetPos, dice), 300);
+                    }
+                }, 240);
+            }, 420);
+        }
+
+        function checkSnakeOrLadderLive(turnIdx, pos, dice) {
+            const player = state.players[turnIdx];
+
+            if (ladders[pos]) {
+                // LIVE LADDER CLIMBING ANIMATION
+                let endPos = ladders[pos];
+                state.statusMsg = `🪜 বাহ! ${player.avatar} ${player.name} মই দিয়ে তরতর করে ${pos} থেকে ${endPos}-এ উঠছেন! 🎉`;
+                document.getElementById('status-msg').innerText = state.statusMsg;
+                speak("Wow! Climbing up the ladder!");
+
+                animateLadderClimb(turnIdx, pos, endPos, () => {
+                    player.pos = endPos;
+                    updateAllTokenPositions();
+                    setTimeout(() => finishTurn(turnIdx, dice), 500);
+                });
+
+            } else if (snakes[pos]) {
+                // LIVE SNAKE OPEN MOUTH + SWALLOW THROUGH BELLY TO TAIL ANIMATION
+                let tailPos = snakes[pos];
+                state.statusMsg = `🐍 ও মা গো! ${player.avatar} ${player.name}-কে ${pos} ঘরে সাপে গিলে খেয়েছে! পেটের ভেতর দিয়ে ${tailPos}-এ পড়ছে! 😱`;
+                document.getElementById('status-msg').innerText = state.statusMsg;
+                speak("Oh no! The snake swallowed you!");
+
+                animateSnakeSwallowAndDigest(turnIdx, pos, tailPos, () => {
+                    player.pos = tailPos;
+                    updateAllTokenPositions();
+                    setTimeout(() => finishTurn(turnIdx, dice), 500);
+                });
+
+            } else {
+                finishTurn(turnIdx, dice);
+            }
+        }
+
+        // Smooth Step-by-Step Ladder Climbing Animation
+        function animateLadderClimb(turnIdx, startPos, endPos, callback) {
+            const tok = document.getElementById(`token-${turnIdx}`);
+            const ladderGroup = document.getElementById(`ladder-group-${startPos}`);
+            if (ladderGroup) ladderGroup.classList.add('ladder-active');
+            if (tok) tok.classList.add('token-climbing');
+
+            const p1 = getCellCenterPercent(startPos);
+            const p2 = getCellCenterPercent(endPos);
+            const totalSteps = 16;
+            let step = 0;
+
+            const climbTimer = setInterval(() => {
+                step++;
+                let t = step / totalSteps;
+                let curX = p1.x + (p2.x - p1.x) * t;
+                let curY = p1.y + (p2.y - p1.y) * t;
+
+                if (tok) {
+                    tok.style.left = curX + '%';
+                    tok.style.top = curY + '%';
+                }
+                if (step % 2 === 0) playTone(500 + step * 25, 'sine', 0.08);
+
+                if (step >= totalSteps) {
+                    clearInterval(climbTimer);
+                    if (ladderGroup) ladderGroup.classList.remove('ladder-active');
+                    if (tok) tok.classList.remove('token-climbing');
+                    callback();
+                }
+            }, 95);
+        }
+
+        // Live Snake Open Mouth -> Swallow -> Belly Bulge Digestion -> Pop Out at Tail!
+        function animateSnakeSwallowAndDigest(turnIdx, headPos, tailPos, callback) {
+            const tok = document.getElementById(`token-${turnIdx}`);
+            const mouth = document.getElementById(`snake-mouth-${headPos}`);
+            const bulge = document.getElementById(`snake-bulge-${headPos}`);
+            const path = document.getElementById(`snake-path-${headPos}`);
+
+            if (!path || !tok) {
+                callback();
+                return;
+            }
+
+            // Step 1: Snake Opens Mouth Wide!
+            if (mouth) mouth.style.display = 'block';
+            playTone(180, 'sawtooth', 0.45);
+
+            setTimeout(() => {
+                // Step 2: Token shrinks into stomach & Belly Bulge appears!
+                if (mouth) mouth.style.display = 'none';
+                if (bulge) bulge.style.display = 'block';
+                tok.classList.add('token-swallowed');
+
+                const totalLen = path.getTotalLength();
+                const duration = 1850; // 1.85 seconds sliding inside stomach
+                const startTime = performance.now();
+
+                function slideStep(now) {
+                    let progress = Math.min(1, (now - startTime) / duration);
+                    let pt = path.getPointAtLength(progress * totalLen);
+
+                    // Move both the player's token and the swollen belly bulge down the snake's curve!
+                    tok.style.left = pt.x + '%';
+                    tok.style.top = pt.y + '%';
+                    if (bulge) {
+                        bulge.setAttribute('cx', pt.x);
+                        bulge.setAttribute('cy', pt.y);
+                    }
+
+                    if (progress < 1) {
+                        requestAnimationFrame(slideStep);
+                    } else {
+                        // Step 3: Pop out at the tail end!
+                        if (bulge) bulge.style.display = 'none';
+                        tok.classList.remove('token-swallowed');
+                        playTone(260, 'triangle', 0.25);
+                        callback();
+                    }
+                }
+                requestAnimationFrame(slideStep);
+            }, 550);
+        }
+
+        function finishTurn(turnIdx, dice) {
+            const player = state.players[turnIdx];
+
+            if (player.pos === 100) {
+                state.gameOver = true;
+                isAnimating = false;
+                state.statusMsg = `🏆 অভিনন্দন! ${player.avatar} ${player.name} ১০০ ঘরে পৌঁছে জিতে গেছেন! 🎉`;
+                document.getElementById('restart-btn').style.display = 'inline-block';
+                speak(`Congratulations! ${player.name} wins the game!`);
+                showFloatingEmoji('🏆', player.name, '');
+                renderRosterAndControls();
+                return;
+            }
+
+            if (dice === 6) {
+                state.statusMsg = `🌟 ছক্কা (6)! ${player.avatar} ${player.name} বোনাস চাল পেয়েছেন! আবার মারুন!`;
+                speak("Six! Bonus turn!");
+            } else {
+                state.currentTurnIdx = (state.currentTurnIdx + 1) % state.players.length;
+                const nextP = state.players[state.currentTurnIdx];
+                state.statusMsg = `👉 এখন ${nextP.avatar} ${nextP.name}-এর দান — ছক্কায় চাপ দিন!`;
+            }
+
+            isAnimating = false;
+            renderRosterAndControls();
+        }
+
+        // ================= 5. LIVE CHAT & 16 EMOJI REACTIONS =================
+        function sendTextChat() {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text) return;
+            input.value = '';
+            dispatchChatMessage(text, text);
+        }
+
+        function sendQuickChat(displayText, voiceText) {
+            dispatchChatMessage(displayText, voiceText);
+        }
+
+        function dispatchChatMessage(text, speakText) {
+            const me = state.players.find(p => p.id === myPlayerId);
+            const senderName = me ? `${me.avatar} ${me.name}` : "Player";
+            const payload = {
+                type: 'CHAT_EVENT',
+                senderId: myPlayerId,
+                senderName: senderName,
+                text: text,
+                speakText: speakText
+            };
+
+            appendChatBubble(senderName, text, true);
+
+            if (isHost) {
+                broadcastFromHost(payload);
+            } else if (hostConn && hostConn.open) {
+                hostConn.send(payload);
+            }
+        }
+
+        function appendChatBubble(senderName, text, isMe) {
+            const box = document.getElementById('chat-messages');
+            const bubble = document.createElement('div');
+            bubble.className = 'msg-bubble ' + (isMe ? 'msg-me' : 'msg-other');
+            bubble.innerHTML = `<span class="msg-sender">${senderName}</span>${text}`;
+            box.appendChild(bubble);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function sendEmoji(emoji, voiceText) {
+            const me = state.players.find(p => p.id === myPlayerId);
+            const senderName = me ? `${me.avatar} ${me.name}` : "Player";
+            const payload = { type: 'EMOJI_EVENT', emoji, senderName, voiceText };
+
+            showFloatingEmoji(emoji, senderName, voiceText);
+            if (isHost) {
+                broadcastFromHost(payload);
+            } else if (hostConn && hostConn.open) {
+                hostConn.send(payload);
+            }
+        }
+
+        function showFloatingEmoji(emoji, senderName, voiceText) {
+            if (voiceText) speak(voiceText);
+            for (let i = 0; i < 4; i++) {
+                setTimeout(() => {
+                    const el = document.createElement('div');
+                    el.className = 'floating-emoji';
+                    el.style.left = (12 + Math.random() * 75) + '%';
+                    el.innerHTML = `${emoji}<span>${senderName}</span>`;
+                    document.body.appendChild(el);
+                    setTimeout(() => el.remove(), 2600);
+                }, i * 160);
+            }
+        }
+
+        // ================= 6. RESTART GAME =================
+        function handleRestartClick() {
+            if (isHost) {
+                hostRestartGame();
+            } else if (hostConn && hostConn.open) {
+                hostConn.send({ type: 'REQ_RESTART' });
+            }
+        }
+
+        function hostRestartGame() {
+            state.players.forEach(p => p.pos = 1);
+            state.currentTurnIdx = 0;
+            state.gameOver = false;
+            state.statusMsg = `নতুন খেলা শুরু! ${state.players[0].avatar} ${state.players[0].name}-এর দান!`;
+            broadcastFromHost({ type: 'RESTART_GAME', state: state });
+            resetBoardUI();
+        }
+
+        function resetBoardUI() {
+            isAnimating = false;
+            document.getElementById('restart-btn').style.display = 'none';
+            document.getElementById('dice-face').innerText = '🎲';
+            updateAllTokenPositions();
+            renderRosterAndControls();
+            speak("New game started!");
+        }
+    </script>
+</body>
+</html>
